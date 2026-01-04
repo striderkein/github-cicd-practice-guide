@@ -1,0 +1,25 @@
+# GitHub CI/CD 実践ガイド プロジェクト設定
+
+## ユーザー情報
+- GitHubユーザー名: striderkein
+- GitHubリポジトリURL形式: https://github.com/striderkein/{repository-name}
+
+## プロジェクト情報
+- 書籍名: GitHub CI/CD 実践ガイド
+- 書籍URL: https://gihyo.jp/book/2024/978-4-297-14173-8
+- 親リポジトリ名: github-cicd-practice-guide
+- 子リポジトリ命名規則: gcpg-{章番号}-{セクション番号}
+  - 例: gcpg-6-2 (第6章セクション2)
+
+## リポジトリ構成
+- 親リポジトリ: github-cicd-practice-guide
+  - 各章のハンズオン用リポジトリを管理
+  - 各子リポジトリは独立したリポジトリとして作成
+- 子リポジトリ: gcpg-{章番号}-{セクション番号}
+  - 各章・セクションに対応したハンズオン用リポジトリ
+  - READMEには親リポジトリへのリンクを記載
+
+## 命名規則
+- リポジトリ名は短縮形 `gcpg` (GitHub CI/CD Practice Guide) を使用
+- Topics: github-cicd-practice-guide, handson, cicd, github-actions
+
