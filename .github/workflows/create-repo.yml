@@ -1,0 +1,225 @@
+name: Create Repository from Issue
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  create-repository:
+    if: contains(github.event.issue.title, 'gcpg-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - name: Extract repository name from issue title
+        id: extract-repo-name
+        run: |
+          REPO_NAME="${{ github.event.issue.title }}"
+          # タイトルからリポジトリ名を抽出（空白や改行を削除）
+          REPO_NAME=$(echo "$REPO_NAME" | tr -d '[:space:]')
+          # gcpg-{章番号}-{セクション番号} の形式を検証
+          if [[ ! "$REPO_NAME" =~ ^gcpg-[0-9]+-[0-9]+$ ]]; then
+            echo "❌ エラー: イシューのタイトルは 'gcpg-{章番号}-{セクション番号}' の形式である必要があります"
+            echo "例: gcpg-6-2, gcpg-1-1"
+            exit 1
+          fi
+          echo "repository_name=$REPO_NAME" >> $GITHUB_OUTPUT
+          echo "✅ リポジトリ名: $REPO_NAME"
+
+      - name: Check if repository already exists
+        id: check-repo
+        run: |
+          REPO_NAME="${{ steps.extract-repo-name.outputs.repository_name }}"
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository_owner }}/$REPO_NAME" || echo "404")
+          
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "⚠️ リポジトリ $REPO_NAME は既に存在します"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "✅ リポジトリ $REPO_NAME は存在しません"
+          fi
+
+      - name: Create repository from template
+        if: steps.check-repo.outputs.exists == 'false'
+        run: |
+          REPO_NAME="${{ steps.extract-repo-name.outputs.repository_name }}"
+          TEMPLATE_REPO="github-cicd-practice-guide-handson"
+          
+          # 章番号とセクション番号を抽出
+          CHAPTER=$(echo "$REPO_NAME" | sed -E 's/gcpg-([0-9]+)-[0-9]+/\1/')
+          SECTION=$(echo "$REPO_NAME" | sed -E 's/gcpg-[0-9]+-([0-9]+)/\1/')
+          
+          echo "📝 テンプレートリポジトリからリポジトリを作成中: $REPO_NAME"
+          echo "   テンプレート: $TEMPLATE_REPO"
+          echo "   章番号: $CHAPTER"
+          echo "   セクション番号: $SECTION"
+          
+          # PATが設定されている場合はそれを使用、なければGITHUB_TOKENを使用
+          if [ -n "${{ secrets.REPO_CREATION_TOKEN }}" ]; then
+            TOKEN="${{ secrets.REPO_CREATION_TOKEN }}"
+            echo "🔑 Personal Access Token を使用します"
+          else
+            TOKEN="${{ secrets.GITHUB_TOKEN }}"
+            echo "🔑 GITHUB_TOKEN を使用します"
+          fi
+          
+          # テンプレートリポジトリからリポジトリを作成
+          HTTP_CODE=$(curl -s -o /tmp/repo_response.json -w "%{http_code}" \
+            -X POST \
+            -H "Accept: application/vnd.github.baptize-preview+json" \
+            -H "Authorization: token $TOKEN" \
+            "https://api.github.com/repos/${{ github.repository_owner }}/$TEMPLATE_REPO/generate" \
+            -d "{
+              \"name\": \"$REPO_NAME\",
+              \"description\": \"GitHub CI/CD 実践ガイド - 第${CHAPTER}章セクション${SECTION}のハンズオン\",
+              \"private\": false,
+              \"owner\": \"${{ github.repository_owner }}\"
+            }")
+          
+          if [ "$HTTP_CODE" != "201" ]; then
+            echo "❌ リポジトリの作成に失敗しました (HTTP $HTTP_CODE)"
+            cat /tmp/repo_response.json
+            if [ "$HTTP_CODE" = "404" ]; then
+              echo ""
+              echo "⚠️ エラー: テンプレートリポジトリ '$TEMPLATE_REPO' が見つかりません"
+              echo "   解決方法:"
+              echo "   1. '$TEMPLATE_REPO' という名前のリポジトリを作成してください"
+              echo "   2. リポジトリの Settings > Template repository で「Template repository」を有効化してください"
+              echo "   3. テンプレートリポジトリに必要なファイル（README.md, .gitignore など）を追加してください"
+            elif [ -z "${{ secrets.REPO_CREATION_TOKEN }}" ]; then
+              echo ""
+              echo "⚠️ 注意: GITHUB_TOKENでは他のリポジトリを作成できない場合があります"
+              echo "   解決方法: Personal Access Token (PAT) を secrets.REPO_CREATION_TOKEN に設定してください"
+              echo "   PATの作成方法: https://github.com/settings/tokens"
+              echo "   必要な権限: repo (すべてのリポジトリへのフルアクセス)"
+            fi
+            exit 1
+          fi
+          
+          echo "✅ リポジトリ $REPO_NAME を作成しました"
+
+      - name: Set repository topics
+        if: steps.check-repo.outputs.exists == 'false'
+        run: |
+          REPO_NAME="${{ steps.extract-repo-name.outputs.repository_name }}"
+          
+          echo "🏷️ トピックスを設定中..."
+          
+          # PATが設定されている場合はそれを使用、なければGITHUB_TOKENを使用
+          if [ -n "${{ secrets.REPO_CREATION_TOKEN }}" ]; then
+            TOKEN="${{ secrets.REPO_CREATION_TOKEN }}"
+          else
+            TOKEN="${{ secrets.GITHUB_TOKEN }}"
+          fi
+          
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X PUT \
+            -H "Accept: application/vnd.github.mercy-preview+json" \
+            -H "Authorization: token $TOKEN" \
+            "https://api.github.com/repos/${{ github.repository_owner }}/$REPO_NAME/topics" \
+            -d '{
+              "names": [
+                "github-cicd-practice-guide",
+                "handson",
+                "cicd",
+                "github-actions"
+              ]
+            }')
+          
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ トピックスを設定しました"
+          else
+            echo "⚠️ トピックスの設定に失敗しました（HTTP $HTTP_CODE）（リポジトリは作成されています）"
+          fi
+
+      - name: Update README with chapter and section numbers
+        if: steps.check-repo.outputs.exists == 'false'
+        run: |
+          REPO_NAME="${{ steps.extract-repo-name.outputs.repository_name }}"
+          CHAPTER=$(echo "$REPO_NAME" | sed -E 's/gcpg-([0-9]+)-[0-9]+/\1/')
+          SECTION=$(echo "$REPO_NAME" | sed -E 's/gcpg-[0-9]+-([0-9]+)/\1/')
+          
+          echo "📄 READMEを更新中..."
+          echo "   章番号: $CHAPTER"
+          echo "   セクション番号: $SECTION"
+          
+          # PATが設定されている場合はそれを使用、なければGITHUB_TOKENを使用
+          if [ -n "${{ secrets.REPO_CREATION_TOKEN }}" ]; then
+            TOKEN="${{ secrets.REPO_CREATION_TOKEN }}"
+          else
+            TOKEN="${{ secrets.GITHUB_TOKEN }}"
+          fi
+          
+          # リポジトリの初期化が完了するまで待機（最大30秒）
+          echo "⏳ リポジトリの初期化を待機中..."
+          for i in {1..30}; do
+            if curl -s -o /dev/null -w "%{http_code}" \
+              -H "Authorization: token $TOKEN" \
+              "https://api.github.com/repos/${{ github.repository_owner }}/$REPO_NAME/contents/README.md" | grep -q "200"; then
+              echo "✅ リポジトリが利用可能になりました"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "⚠️ タイムアウト: リポジトリの初期化が完了しませんでしたが、続行します"
+            else
+              sleep 1
+            fi
+          done
+          
+          # リポジトリをクローン
+          git clone "https://$TOKEN@github.com/${{ github.repository_owner }}/$REPO_NAME.git" repo
+          cd repo
+          
+          # デフォルトブランチを確認
+          DEFAULT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "main")
+          
+          # READMEのプレースホルダーを置換
+          if [ -f README.md ]; then
+            # macOSとLinuxの互換性を考慮
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+              sed -i '' "s/{CHAPTER}/$CHAPTER/g" README.md
+              sed -i '' "s/{SECTION}/$SECTION/g" README.md
+            else
+              sed -i "s/{CHAPTER}/$CHAPTER/g" README.md
+              sed -i "s/{SECTION}/$SECTION/g" README.md
+            fi
+            
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add README.md
+            git commit -m "docs: READMEの章番号とセクション番号を更新"
+            git push origin "$DEFAULT_BRANCH"
+            
+            echo "✅ READMEを更新しました"
+          else
+            echo "⚠️ README.md が見つかりませんでした（テンプレートリポジトリに含まれていない可能性があります）"
+          fi
+
+      - name: Comment on issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const repoName = '${{ steps.extract-repo-name.outputs.repository_name }}';
+            const exists = '${{ steps.check-repo.outputs.exists }}' === 'true';
+            
+            if (exists) {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `⚠️ リポジトリ \`${repoName}\` は既に存在しています。`
+              });
+            } else {
+              const repoUrl = `https://github.com/${{ github.repository_owner }}/${repoName}`;
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `✅ リポジトリを作成しました！\n\n- リポジトリ: [${repoName}](${repoUrl})\n- テンプレート: \`github-cicd-practice-guide-handson\`\n- トピックス: \`github-cicd-practice-guide\`, \`handson\`, \`cicd\`, \`github-actions\`\n\nリポジトリは public で作成され、テンプレートリポジトリからファイルがコピーされています。`
+              });
+            }
+

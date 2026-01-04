@@ -39,6 +39,33 @@ GitHub の Topics 機能を活用して、関連するリポジトリを検索�
 - `cicd` - CI/CD 関連
 - `github-actions` - GitHub Actions 関連
 
+## 🤖 自動化機能
+
+このリポジトリには、新しい章・セクションのハンズオン用リポジトリを自動的に作成する機能があります。
+
+### テンプレートリポジトリ
+
+新しいリポジトリは、テンプレートリポジトリ `github-cicd-practice-guide-handson` から作成されます。
+
+### 新しいリポジトリの作成方法
+
+1. [イシューテンプレート「START_NEW_SECTION」](https://github.com/striderkein/github-cicd-practice-guide/issues/new?template=START_NEW_SECTION.md) を使用してイシューを作成
+2. イシューのタイトルを `gcpg-{章番号}-{セクション番号}` の形式で設定（例: `gcpg-1-1`）
+3. GitHub Actions が自動的に以下を実行します：
+   - テンプレートリポジトリ `github-cicd-practice-guide-handson` から新しい public リポジトリを作成
+   - 命名規則に従ったリポジトリ名を設定
+   - トピックスを自動付与（`github-cicd-practice-guide`, `handson`, `cicd`, `github-actions`）
+   - READMEのプレースホルダー（`{CHAPTER}`, `{SECTION}`）を実際の値に置換
+
+### 注意事項
+
+- **Personal Access Token (PAT) の設定が必要な場合があります**
+  - `GITHUB_TOKEN` では他のリポジトリを作成できない場合があります
+  - その場合は、以下の手順でPATを設定してください：
+    1. [GitHub Settings > Developer settings > Personal access tokens](https://github.com/settings/tokens) でPATを作成
+    2. 必要な権限: `repo` (すべてのリポジトリへのフルアクセス)
+    3. このリポジトリの Settings > Secrets and variables > Actions で `REPO_CREATION_TOKEN` という名前でPATを設定
+
 ## 📖 使い方
 
 1. 各章のリポジトリを個別にクローンして学習を進めます
