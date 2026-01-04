@@ -1,5 +1,5 @@
 ---
-name: START_NEW_SECTION
+name: Start New Section
 about: 新しい章・セクションのハンズオン用リポジトリを作成する
 title: 'gcpg-{章番号}-{セクション番号}'
 labels: ''
